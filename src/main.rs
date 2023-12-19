@@ -158,10 +158,14 @@ fn print_bank_accounts_system(landlords: Query<(&BankAccount), Without<Rent>>, r
     println!("Renter bank account: {}", renter_bank_account);
 }
 
-fn plot_pay_distribution(bank_acounts : Query<(&BankAccount)>) {
+fn plot_wealth_distribution_instantaneous(bank_acounts : Query<(&BankAccount)>) {
+    println!("{}", bank_acounts.iter().len());
     let data = bank_acounts.iter().map(|b| (0.0, b.balance)).collect::<Vec<_>>();
-    let hist = utils::histogram(&data, -0.1, 1500.0, 16);
-    Chart::new(180, 30, 0.0, 1500.0)
+    let max_val = bank_acounts.iter().map(|b| b.balance).fold(0.0, |acc, b| if b > acc { b } else { acc });
+    // make max closest power of 10
+    let hist = utils::histogram(&data, -0.1, max_val, 16);
+    println!("Wealth distribution of last people");
+    Chart::new(180, 30, 0.0, max_val)
         .lineplot(
             &Shape::Bars( &hist)
             )
@@ -175,6 +179,18 @@ struct IterationCount(usize);
 #[derive(Resource)]
 struct PopulationStatistics {
     number_of_people: Vec<u32>,
+    average_age: Vec<u32>,
+    average_wealth: Vec<f32>,
+}
+
+impl PopulationStatistics {
+    fn new() -> Self {
+        Self {
+            number_of_people: Vec::new(),
+            average_age: Vec::new(),
+            average_wealth: Vec::new(),
+        }
+    }
 }
 
 fn update_iteration_count(mut iteration_count: ResMut<IterationCount>) {
@@ -192,9 +208,15 @@ fn runner(mut app: App) {
     }
 }
 
+fn is_at_start(iteration_count : Res<IterationCount>) -> bool {
+    iteration_count.0 == 0
+}
+
 fn is_at_end(iteration_count : Res<IterationCount>) -> bool {
     iteration_count.0 + 1 == ITERATIONS
 }
+
+
 
 fn age_people(mut people: Query<(&mut Age)>) {
     for (mut age) in people.iter_mut() {
@@ -237,14 +259,46 @@ fn people_born(mut commands: Commands, mut ev_death: EventReader<DeathEvent>, pe
     }
 }
 
-fn record_number_of_people(mut population_statistics: ResMut<PopulationStatistics>, people: Query<&Person>) {
+const RETURN_RATE : f32 = 0.08;
+
+fn bank_investment_returns(mut people: Query<(&mut BankAccount)>) {
+    let rng = &mut rand::thread_rng();
+
+    for (mut bank_account) in people.iter_mut() {
+        bank_account.balance += bank_account.balance * RETURN_RATE;
+    }
+}
+
+fn record_number_of_people(mut population_statistics: ResMut<PopulationStatistics>, people: Query<(&Person)>) {
     population_statistics.number_of_people.push(people.iter().len() as u32);
+}
+
+fn record_age_distribution(mut population_statistics: ResMut<PopulationStatistics>, people: Query<(&Age)>) {
+    let average_age = people.iter().fold(0, |acc,age| acc + age.0) / people.iter().len() as u32;
+    population_statistics.average_age.push(average_age);
+}
+
+fn record_wealth_distribution(mut population_statistics: ResMut<PopulationStatistics>, people: Query<(&BankAccount)>) {
+    let average_wealth = people.iter().fold(0.0, |acc, (bank_account)| acc + bank_account.balance) / people.iter().len() as f32;
+    population_statistics.average_wealth.push(average_wealth);
 }
 
 fn plot_age_distribution(mut population_statistics: ResMut<PopulationStatistics>) {
     let data = population_statistics.number_of_people.iter().enumerate().map(|(i, &n)| (i as f32, n as f32)).collect::<Vec<_>>();
-    println!("data: {:?}", data);
     // create a line chart 
+    println!("Age distribution");
+    Chart::new(180, 30, 0.0, ITERATIONS as f32)
+        .lineplot(
+            &Shape::Lines(&data)
+        )
+        .nice();
+
+}
+
+fn plot_wealth_distribution(mut population_statistics: ResMut<PopulationStatistics>) {
+    let data = population_statistics.average_wealth.iter().enumerate().map(|(i, &n)| (i as f32, n as f32)).collect::<Vec<_>>();
+    // create a line chart 
+    println!("Wealth distribution");
     Chart::new(180, 30, 0.0, ITERATIONS as f32)
         .lineplot(
             &Shape::Lines(&data)
@@ -260,19 +314,30 @@ impl Plugin for SimPlugin {
         app
             .add_event::<DeathEvent>()
             .insert_resource(IterationCount(0))
-            .insert_resource(PopulationStatistics { number_of_people: Vec::new() })
+            .insert_resource(PopulationStatistics::new())
             .add_systems(Startup, populate_person_world)
+            .add_systems(Update, plot_wealth_distribution_instantaneous
+                .run_if(is_at_start))
+
             
-            .add_systems(Update, people_die)
-            .add_systems(Update, people_born
-                .after(people_die)
-            )
+            // .add_systems(Update, people_die)
+            // .add_systems(Update, people_born
+            //     .after(people_die)
+            // )
+            
+
             .add_systems(Last, age_people)
+            .add_systems(Last, bank_investment_returns)
             .add_systems(Last, update_iteration_count)
+
             .add_systems(Last, record_number_of_people)
+            .add_systems(Last, record_age_distribution)
+            .add_systems(Last, record_wealth_distribution)
             .add_systems(Update, (
-                plot_pay_distribution.run_if(is_at_end),
-                plot_age_distribution.run_if(is_at_end))
+                plot_wealth_distribution_instantaneous.run_if(is_at_end),
+                // plot_age_distribution.run_if(is_at_end),
+                // plot_wealth_distribution.run_if(is_at_end),
+                )
             )
             
 
