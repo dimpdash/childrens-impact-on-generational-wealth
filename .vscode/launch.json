@@ -1,0 +1,31 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Launch",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/target/debug/childrens-impact-on-generational-wealth.exe",
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'app'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=childrens-impact-on-generational-wealth",
+                    "--package=childrens-impact-on-generational-wealth"
+                ],
+                "filter": {
+                    "name": "childrens-impact-on-generational-wealth",
+                    "kind": "bin"
+                } 
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+    ]
+}
